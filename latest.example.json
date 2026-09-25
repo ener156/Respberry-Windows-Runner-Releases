@@ -1,0 +1,8 @@
+{
+  "appName": "Respberry Windows Runner",
+  "version": "0.0",
+  "versionCode": 0,
+  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-0.0.exe",
+  "sha256": "EXAMPLE_ONLY_NOT_A_RELEASE",
+  "notes": "Beispielstruktur; nicht als produktives latest.json verwenden"
+}
