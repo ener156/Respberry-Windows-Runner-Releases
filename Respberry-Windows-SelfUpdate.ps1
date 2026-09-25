@@ -197,21 +197,70 @@ try {
         throw 'Updater-Prozess läuft noch.'
     }
 
-    if ($StarterProcessId -gt 0) {
-        $p = Get-Process -Id $StarterProcessId -ErrorAction SilentlyContinue
-        if ($null -ne $p) {
-            try { [void]$p.CloseMainWindow() } catch {}
-            for ($i = 0; $i -lt 40; $i++) {
-                if ($null -eq (Get-Process -Id $StarterProcessId -ErrorAction SilentlyContinue)) { break }
-                Start-Sleep -Milliseconds 250
-            }
-        }
+    function Get-TargetRunnerProcesses {
+        $target = [IO.Path]::GetFullPath($TargetStarterExe)
 
-        if ($null -ne (Get-Process -Id $StarterProcessId -ErrorAction SilentlyContinue)) {
-            Stop-Process -Id $StarterProcessId -Force -ErrorAction Stop
-            Start-Sleep -Milliseconds 500
+        @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            try {
+                -not [string]::IsNullOrWhiteSpace($_.Path) -and
+                [string]::Equals(
+                    [IO.Path]::GetFullPath($_.Path),
+                    $target,
+                    [StringComparison]::OrdinalIgnoreCase)
+            }
+            catch {
+                $false
+            }
+        })
+    }
+
+    function Test-TargetExeUnlocked {
+        try {
+            $stream = [IO.File]::Open(
+                $TargetStarterExe,
+                [IO.FileMode]::Open,
+                [IO.FileAccess]::Read,
+                [IO.FileShare]::None)
+            $stream.Dispose()
+            return $true
+        }
+        catch {
+            return $false
         }
     }
+
+    $runnerProcesses = Get-TargetRunnerProcesses
+    foreach ($runnerProcess in $runnerProcesses) {
+        try { [void]$runnerProcess.CloseMainWindow() } catch {}
+    }
+
+    for ($i = 0; $i -lt 40; $i++) {
+        if ((Get-TargetRunnerProcesses).Count -eq 0) { break }
+        Start-Sleep -Milliseconds 250
+    }
+
+    $runnerProcesses = Get-TargetRunnerProcesses
+    foreach ($runnerProcess in $runnerProcesses) {
+        Stop-Process -Id $runnerProcess.Id -Force -ErrorAction Stop
+    }
+
+    for ($i = 0; $i -lt 80; $i++) {
+        if ((Get-TargetRunnerProcesses).Count -eq 0 -and (Test-TargetExeUnlocked)) {
+            break
+        }
+
+        Start-Sleep -Milliseconds 250
+    }
+
+    if ((Get-TargetRunnerProcesses).Count -gt 0) {
+        throw 'Mindestens ein Windows-Runner-Prozess läuft nach dem Beenden weiter.'
+    }
+
+    if (-not (Test-TargetExeUnlocked)) {
+        throw 'Windows-Runner-EXE bleibt nach dem Prozessende gesperrt.'
+    }
+
+    Write-HelperLine '[PASS] Runner beendet und Ziel-EXE freigegeben.'
 
     if ((Get-HelperFileSha256 $TempExePath) -ne $ExpectedExeSha) {
         throw 'Temporäre EXE SHA falsch.'
@@ -221,7 +270,9 @@ try {
         Copy-Item -LiteralPath $TempExePath -Destination $TargetStarterExe -Force
     }
     catch {
-        Copy-Item -LiteralPath $BackupStarterExe -Destination $TargetStarterExe -Force
+        if (-not (Test-Path -LiteralPath $TargetStarterExe -PathType Leaf)) {
+            Copy-Item -LiteralPath $BackupStarterExe -Destination $TargetStarterExe -Force
+        }
         throw
     }
 
