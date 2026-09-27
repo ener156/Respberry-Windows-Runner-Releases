@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
-  "version": "7.4.17.0",
-  "versionCode": 28,
-  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.17.0.exe",
-  "sha256": "6bbea689eb06c105864cc47e52664c0ad927dad8eac6dbe80b8fa80297672105",
+  "version": "7.4.18.0",
+  "versionCode": 29,
+  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.18.0.exe",
+  "sha256": "88a9499b5704e18afa27807daf25aea2c5dd934f703f3b22d1034236dee7afe1",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
   "updaterSha256": "b98bd3f09ca6c78057cda36e4a7c8cb8b39c2113d28381e94287c6c48334690a",
-  "notes": "Automatisch veröffentlichte Windows-Runner-Version 7.4.17.0"
+  "notes": "Automatisch veröffentlichte Windows-Runner-Version 7.4.18.0"
 }
