@@ -1,6 +1,7 @@
 param(
     [string]$TargetStarterExe = '',
-    [int]$StarterProcessId = 0
+    [int]$StarterProcessId = 0,
+    [string]$ReadyFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -197,6 +198,20 @@ try {
         throw 'Updater-Prozess läuft noch.'
     }
 
+    # Der Runner wartet jetzt selbst auf die Ready-Bestätigung und schließt sich
+    # anschließend geordnet. Deshalb bekommt er zuerst ausreichend Zeit für sein
+    # normales Prozessende, bevor der Helper überhaupt ein Fenster schließt oder
+    # einen Prozess erzwingt.
+    if ($StarterProcessId -gt 0) {
+        for ($i = 0; $i -lt 480; $i++) {
+            if ($null -eq (Get-Process -Id $StarterProcessId -ErrorAction SilentlyContinue)) {
+                break
+            }
+
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
     function Get-TargetRunnerProcesses {
         $target = [IO.Path]::GetFullPath($TargetStarterExe)
 
@@ -324,7 +339,25 @@ catch {
 
     $helperProcess = Start-Process -FilePath $CurrentPowerShellExe -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $HelperPath) -PassThru
 
+    if ($null -eq $helperProcess -or $helperProcess.HasExited) {
+        throw 'Austausch-Helper konnte nicht dauerhaft gestartet werden.'
+    }
+
     Write-UpdateLine ('[HELPER] PID: ' + $helperProcess.Id)
+
+    if (-not [string]::IsNullOrWhiteSpace($ReadyFile)) {
+        $readyDirectory = Split-Path -Parent $ReadyFile
+        if (-not [string]::IsNullOrWhiteSpace($readyDirectory)) {
+            [IO.Directory]::CreateDirectory($readyDirectory) | Out-Null
+        }
+
+        [IO.File]::WriteAllText(
+            $ReadyFile,
+            ('READY|PID=' + $helperProcess.Id + '|VERSION=' + $latestVersionText),
+            (New-Object Text.UTF8Encoding($false)))
+        Write-UpdateLine ('[HANDOFF] Austausch-Helper bereit gemeldet.')
+    }
+
     Write-UpdateLine ('[UPDATE] ' + $InstalledVersionText + ' -> ' + $latestVersionText)
     Write-UpdateLine '[RC] 0'
     exit 0
