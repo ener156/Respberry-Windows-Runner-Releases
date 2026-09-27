@@ -1,8 +1,8 @@
 {
-  "status": "completed",
-  "conclusion": "success",
-  "headSha": "f42c4dd9691508503029586def249b268e0056a7",
-  "runId": "36326047394",
-  "updatedAtUtc": "2026-09-27T14:29:03.2487366Z",
-  "workflowUrl": "https://github.com/ener156/Respberry-Windows-Runner/actions/runs/36326047394"
+  "status": "in_progress",
+  "conclusion": "",
+  "headSha": "6af095639823a956c0b222538d0af1efbdf39665",
+  "runId": "36326688294",
+  "updatedAtUtc": "2026-09-27T14:39:34.3338645Z",
+  "workflowUrl": "https://github.com/ener156/Respberry-Windows-Runner/actions/runs/36326688294"
 }
