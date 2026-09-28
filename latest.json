@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
-  "version": "7.4.41.0",
-  "versionCode": 107,
-  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.41.0.exe",
-  "sha256": "b088188cd537d4d14a6f213a41299c53f31629ee9883ea7eed812d24fd0dd1dd",
+  "version": "7.4.42.0",
+  "versionCode": 109,
+  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.42.0.exe",
+  "sha256": "b100c768f7e5678679254a86236190b3d9085285ea8829736525ed0619eae864",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
   "updaterSha256": "a5f263bdac1a77ba6c1d500bc8fd1ba2c91a9c1d3d1ef9d8df568ed1f239385a",
-  "notes": "Localize Windows GitHub browser dynamic UI"
+  "notes": "Bump final W008 Windows Runner to 7.4.42.0"
 }
