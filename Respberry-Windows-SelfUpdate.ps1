@@ -1,7 +1,8 @@
 param(
     [string]$TargetStarterExe = '',
     [int]$StarterProcessId = 0,
-    [string]$ReadyFile = ''
+    [string]$ReadyFile = '',
+    [string]$ProgressFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +24,23 @@ function Write-UpdateLine {
         $MainReport,
         $Text + [Environment]::NewLine,
         (New-Object Text.UTF8Encoding($false)))
+}
+
+function Write-ProgressState {
+    param(
+        [string]$Phase,
+        [long]$Done = 0,
+        [long]$Total = 0,
+        [int]$Percent = -1
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ProgressFile)) { return }
+    $directory = Split-Path -Parent $ProgressFile
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+    $text = $Phase + '|' + $Done + '|' + $Total + '|' + $Percent
+    [IO.File]::WriteAllText($ProgressFile, $text, (New-Object Text.UTF8Encoding($false)))
 }
 
 function Get-FileSha256 {
@@ -120,7 +138,44 @@ try {
     [IO.Directory]::CreateDirectory($UpdateRoot) | Out-Null
 
     Write-UpdateLine ('[DOWNLOAD] ' + $downloadUrl)
-    Invoke-WebRequest -UseBasicParsing -Uri $downloadUrl -OutFile $TempExePath -TimeoutSec 120
+    Write-ProgressState -Phase 'download' -Done 0 -Total 0 -Percent 0
+
+    $httpClient = [Net.Http.HttpClient]::new()
+    $httpClient.Timeout = [TimeSpan]::FromSeconds(120)
+    $response = $null
+    $inputStream = $null
+    $outputStream = $null
+
+    try {
+        $response = $httpClient.GetAsync($downloadUrl, [Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            throw ('Update-Download fehlgeschlagen. HTTP=' + [int]$response.StatusCode)
+        }
+        $totalBytes = 0L
+        if ($null -ne $response.Content.Headers.ContentLength) {
+            $totalBytes = [long]$response.Content.Headers.ContentLength
+        }
+        $inputStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $outputStream = [IO.File]::Open($TempExePath, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $buffer = New-Object byte[] (64 * 1024)
+        $doneBytes = 0L
+        while ($true) {
+            $read = $inputStream.Read($buffer, 0, $buffer.Length)
+            if ($read -le 0) { break }
+            $outputStream.Write($buffer, 0, $read)
+            $doneBytes += $read
+            $percent = if ($totalBytes -gt 0) { [Math]::Min(100, [int](($doneBytes * 100L) / $totalBytes)) } else { -1 }
+            Write-ProgressState -Phase 'download' -Done $doneBytes -Total $totalBytes -Percent $percent
+        }
+        $outputStream.Flush()
+        Write-ProgressState -Phase 'downloaded' -Done $doneBytes -Total $totalBytes -Percent 100
+    }
+    finally {
+        if ($null -ne $outputStream) { $outputStream.Dispose() }
+        if ($null -ne $inputStream) { $inputStream.Dispose() }
+        if ($null -ne $response) { $response.Dispose() }
+        $httpClient.Dispose()
+    }
 
     if (-not (Test-Path -LiteralPath $TempExePath -PathType Leaf)) {
         throw 'Heruntergeladene EXE fehlt.'
@@ -345,6 +400,8 @@ catch {
 
     Write-UpdateLine ('[HELPER] PID: ' + $helperProcess.Id)
 
+    Write-ProgressState -Phase 'ready' -Done 0 -Total 0 -Percent 100
+
     if (-not [string]::IsNullOrWhiteSpace($ReadyFile)) {
         $readyDirectory = Split-Path -Parent $ReadyFile
         if (-not [string]::IsNullOrWhiteSpace($readyDirectory)) {
@@ -364,6 +421,7 @@ catch {
 }
 catch {
     try {
+        Write-ProgressState -Phase 'error' -Done 0 -Total 0 -Percent -1
         Write-UpdateLine ('[FEHLER] ' + $_.Exception.Message)
         Write-UpdateLine '[RC] 40'
     }
