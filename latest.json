@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
   "version": "7.4.43.0",
-  "versionCode": 115,
+  "versionCode": 117,
   "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.43.0.exe",
-  "sha256": "030c4d7da1895df8a5aa4f72f9407c7ad98b4b8c61fe175b76bdd029930b1d78",
+  "sha256": "92b834cf9cfd40fde176b4cbeea9d3ca5075d77f5121247120d429222fbdd335",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
   "updaterSha256": "a5f263bdac1a77ba6c1d500bc8fd1ba2c91a9c1d3d1ef9d8df568ed1f239385a",
-  "notes": "Bump final W008 Windows Runner to 7.4.43.0"
+  "notes": "Fix Windows delete commit regex escaping"
 }
