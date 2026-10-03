@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
-  "version": "7.4.44.0",
-  "versionCode": 127,
-  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.44.0.exe",
-  "sha256": "88f5a58713c5ccbf8c6c090ef39fc40a5a1543f5dfae5e13b56dd77d92b214f3",
+  "version": "7.4.45.0",
+  "versionCode": 128,
+  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.45.0.exe",
+  "sha256": "fccd5963a74bdfb090ca2df55f31360107a39cbe6a82ca5df22a938df59ba4b5",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
   "updaterSha256": "a5f263bdac1a77ba6c1d500bc8fd1ba2c91a9c1d3d1ef9d8df568ed1f239385a",
-  "notes": "Bump Windows Runner for post-failure release"
+  "notes": "Add generic post-success evidence readback"
 }
