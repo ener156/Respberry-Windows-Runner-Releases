@@ -48,6 +48,29 @@ function Get-FileSha256 {
     (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
 }
 
+function Get-RunnerVersionCodeFromExe {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+
+    try {
+        $productVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($LiteralPath).ProductVersion
+        if ([string]::IsNullOrWhiteSpace($productVersion)) { return 0 }
+
+        $match = [regex]::Match(
+            $productVersion,
+            'RespberryVersionCode=(?<code>[0-9]+)',
+            [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+        if (-not $match.Success) { return 0 }
+
+        $value = 0
+        if ([int]::TryParse($match.Groups['code'].Value, [ref]$value)) {
+            return $value
+        }
+    }
+    catch {}
+
+    return 0
+}
+
 function Escape-SingleQuotedLiteral {
     param([string]$Value)
     ($Value -replace "'", "''")
@@ -101,8 +124,9 @@ try {
     $StarterFileName = Split-Path -Leaf $TargetStarterExe
     $InstalledVersionText = [Diagnostics.FileVersionInfo]::GetVersionInfo($TargetStarterExe).FileVersion
     $InstalledVersion = New-Object Version($InstalledVersionText)
+    $InstalledVersionCode = Get-RunnerVersionCodeFromExe $TargetStarterExe
 
-    Write-UpdateLine ('[PRÜFUNG] Installierte Version: ' + $InstalledVersionText)
+    Write-UpdateLine ('[PRÜFUNG] Installierte Version: ' + $InstalledVersionText + ' (Build ' + $InstalledVersionCode + ')')
     Write-UpdateLine ('[PRÜFUNG] Manifest: ' + $ManifestUrl)
 
     $manifestResponse = Invoke-WebRequest -UseBasicParsing -Uri $ManifestUrl -TimeoutSec 30
@@ -112,6 +136,10 @@ try {
 
     $manifest = $manifestResponse.Content | ConvertFrom-Json
     $latestVersionText = [string]$manifest.version
+    $latestVersionCode = 0
+    if ($null -ne $manifest.versionCode) {
+        [void][int]::TryParse([string]$manifest.versionCode, [ref]$latestVersionCode)
+    }
     $downloadUrl = [string]$manifest.downloadUrl
     $expectedSha = ([string]$manifest.sha256).Trim().ToLowerInvariant()
 
@@ -126,9 +154,17 @@ try {
     }
 
     $latestVersion = New-Object Version($latestVersionText)
-    Write-UpdateLine ('[PRÜFUNG] Verfügbare Version: ' + $latestVersionText)
+    Write-UpdateLine ('[PRÜFUNG] Verfügbare Version: ' + $latestVersionText + ' (Build ' + $latestVersionCode + ')')
 
-    if ($latestVersion -le $InstalledVersion) {
+    $updateRequired =
+        if ($latestVersionCode -gt 0 -and $InstalledVersionCode -gt 0) {
+            $latestVersionCode -gt $InstalledVersionCode
+        }
+        else {
+            $latestVersion -gt $InstalledVersion
+        }
+
+    if (-not $updateRequired) {
         Write-UpdateLine '[OK] Kein Update erforderlich.'
         Write-UpdateLine '[RC] 0'
         exit 0
@@ -191,8 +227,14 @@ try {
         throw ('Heruntergeladene EXE meldet unerwartete Version. Erwartet=' + $latestVersionText + ' Ist=' + $downloadVersion)
     }
 
+    $downloadVersionCode = Get-RunnerVersionCodeFromExe $TempExePath
+    if ($latestVersionCode -gt 0 -and $downloadVersionCode -ne $latestVersionCode) {
+        throw ('Heruntergeladene EXE meldet unerwarteten Build. Erwartet=' + $latestVersionCode + ' Ist=' + $downloadVersionCode)
+    }
+
     Write-UpdateLine ('[PASS] Download SHA256=' + $downloadSha)
     Write-UpdateLine ('[PASS] Download-Version=' + $downloadVersion)
+    Write-UpdateLine ('[PASS] Download-Build=' + $downloadVersionCode)
 
     $BackupStarterExe = Join-Path $BackupRoot $StarterFileName
     Copy-Item -LiteralPath $TargetStarterExe -Destination $BackupStarterExe -Force
@@ -226,6 +268,7 @@ $TempExePath = '__TEMP_EXE__'
 $BackupStarterExe = '__BACKUP__'
 $ExpectedExeSha = '__EXE_SHA__'
 $ExpectedVersion = '__VERSION__'
+[int]$ExpectedVersionCode = __VERSION_CODE__
 $HelperReport = '__REPORT__'
 
 function Write-HelperLine {
@@ -240,6 +283,21 @@ function Write-HelperLine {
 function Get-HelperFileSha256 {
     param([Parameter(Mandatory = $true)][string]$LiteralPath)
     (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
+}
+
+function Get-HelperRunnerVersionCode {
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+
+    try {
+        $productVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($LiteralPath).ProductVersion
+        if ([string]::IsNullOrWhiteSpace($productVersion)) { return 0 }
+        $match = [regex]::Match($productVersion, 'RespberryVersionCode=(?<code>[0-9]+)')
+        if (-not $match.Success) { return 0 }
+        return [int]$match.Groups['code'].Value
+    }
+    catch {
+        return 0
+    }
 }
 
 try {
@@ -357,9 +415,16 @@ try {
         throw ('Installierte Dateiversion falsch; Rollback ausgeführt. Ist=' + $installedVersion)
     }
 
+    $installedVersionCode = Get-HelperRunnerVersionCode $TargetStarterExe
+    if ($ExpectedVersionCode -gt 0 -and $installedVersionCode -ne $ExpectedVersionCode) {
+        Copy-Item -LiteralPath $BackupStarterExe -Destination $TargetStarterExe -Force
+        throw ('Installierter Build falsch; Rollback ausgeführt. Ist=' + $installedVersionCode)
+    }
+
     Remove-Item -LiteralPath $TempExePath -Force -ErrorAction SilentlyContinue
 
     Write-HelperLine ('[OK] EXE ersetzt. Dateiversion=' + $ExpectedVersion)
+    Write-HelperLine ('[OK] VersionCode=' + $installedVersionCode)
     Write-HelperLine ('[OK] Installations-SHA=' + $ExpectedExeSha)
     Start-Process -FilePath $TargetStarterExe
     Write-HelperLine '[RC] 0'
@@ -383,6 +448,7 @@ catch {
         '__BACKUP__' = (Escape-SingleQuotedLiteral $BackupStarterExe)
         '__EXE_SHA__' = $expectedSha
         '__VERSION__' = (Escape-SingleQuotedLiteral $latestVersionText)
+        '__VERSION_CODE__' = [string]$latestVersionCode
         '__REPORT__' = (Escape-SingleQuotedLiteral $HelperReport)
     }
 
@@ -410,12 +476,12 @@ catch {
 
         [IO.File]::WriteAllText(
             $ReadyFile,
-            ('READY|PID=' + $helperProcess.Id + '|VERSION=' + $latestVersionText),
+            ('READY|PID=' + $helperProcess.Id + '|VERSION=' + $latestVersionText + '|VERSION_CODE=' + $latestVersionCode),
             (New-Object Text.UTF8Encoding($false)))
         Write-UpdateLine ('[HANDOFF] Austausch-Helper bereit gemeldet.')
     }
 
-    Write-UpdateLine ('[UPDATE] ' + $InstalledVersionText + ' -> ' + $latestVersionText)
+    Write-UpdateLine ('[UPDATE] ' + $InstalledVersionText + ' (Build ' + $InstalledVersionCode + ') -> ' + $latestVersionText + ' (Build ' + $latestVersionCode + ')')
     Write-UpdateLine '[RC] 0'
     exit 0
 }
