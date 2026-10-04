@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
   "version": "7.4.47.0",
-  "versionCode": 184,
+  "versionCode": 185,
   "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.47.0.exe",
-  "sha256": "f55b17a47bfa6b2eaf4718cd6db1e78c45addf44817147b1f0e3866325b38a84",
+  "sha256": "a38681bee5a58ebe714db42bcab860b53732783ffe0c686804aa33b03698ecd5",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
   "updaterSha256": "64d216f92b81c9e77ac2c792f896774f6b95b0a91e52ac74b3f1f246b13548b0",
-  "notes": "Add generic RC explanation contract"
+  "notes": "W-010 optimize GitHub script loading"
 }
