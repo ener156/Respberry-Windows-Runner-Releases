@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
   "version": "7.4.47.0",
-  "versionCode": 203,
+  "versionCode": 204,
   "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.47.0.exe",
-  "sha256": "badb74ab4663ef7ebc6b29c36c2bd0f5928ee03bb17e1f2ecd58836900cff172",
+  "sha256": "0d76d3baeca9f76a7990f002006bd596fabeebd074add8b0645d694ae16f7fd9",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
-  "updaterSha256": "64d216f92b81c9e77ac2c792f896774f6b95b0a91e52ac74b3f1f246b13548b0",
-  "notes": "W-007: structured runner issues in terminal status UI"
+  "updaterSha256": "745a183f6e1e6763138566c6b170c2e9c9aed790eea3b18fcebf83296be40940",
+  "notes": "W-003: harden Windows self-update against transient failures"
 }

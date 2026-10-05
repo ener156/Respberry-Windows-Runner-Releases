@@ -2,7 +2,11 @@ param(
     [string]$TargetStarterExe = '',
     [int]$StarterProcessId = 0,
     [string]$ReadyFile = '',
-    [string]$ProgressFile = ''
+    [string]$ProgressFile = '',
+    [string]$ExpectedVersion = '',
+    [int]$ExpectedVersionCode = 0,
+    [string]$ExpectedDownloadUrl = '',
+    [string]$ExpectedExeSha = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,7 +35,8 @@ function Write-ProgressState {
         [string]$Phase,
         [long]$Done = 0,
         [long]$Total = 0,
-        [int]$Percent = -1
+        [int]$Percent = -1,
+        [string]$Detail = ''
     )
 
     if ([string]::IsNullOrWhiteSpace($ProgressFile)) { return }
@@ -39,8 +44,21 @@ function Write-ProgressState {
     if (-not [string]::IsNullOrWhiteSpace($directory)) {
         [IO.Directory]::CreateDirectory($directory) | Out-Null
     }
-    $text = $Phase + '|' + $Done + '|' + $Total + '|' + $Percent
+
+    $safeDetail = (($Detail -replace '[\r\n\|]+', ' ').Trim())
+    $text =
+        $Phase + '|' + $Done + '|' + $Total + '|' + $Percent + '|' + $safeDetail
     [IO.File]::WriteAllText($ProgressFile, $text, (New-Object Text.UTF8Encoding($false)))
+}
+
+function Add-CacheBustUri {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$Token
+    )
+
+    $separator = if ($Url.Contains('?')) { '&' } else { '?' }
+    return $Url + $separator + 'respberry_cb=' + [Uri]::EscapeDataString($Token)
 }
 
 function Get-FileSha256 {
@@ -127,21 +145,65 @@ try {
     $InstalledVersionCode = Get-RunnerVersionCodeFromExe $TargetStarterExe
 
     Write-UpdateLine ('[PRÜFUNG] Installierte Version: ' + $InstalledVersionText + ' (Build ' + $InstalledVersionCode + ')')
-    Write-UpdateLine ('[PRÜFUNG] Manifest: ' + $ManifestUrl)
 
-    $manifestResponse = Invoke-WebRequest -UseBasicParsing -Uri $ManifestUrl -TimeoutSec 30
-    if ($manifestResponse.StatusCode -ne 200) {
-        throw ('Update-Manifest konnte nicht geladen werden. HTTP=' + $manifestResponse.StatusCode)
-    }
+    $snapshotProvided =
+        -not [string]::IsNullOrWhiteSpace($ExpectedVersion) -or
+        $ExpectedVersionCode -gt 0 -or
+        -not [string]::IsNullOrWhiteSpace($ExpectedDownloadUrl) -or
+        -not [string]::IsNullOrWhiteSpace($ExpectedExeSha)
 
-    $manifest = $manifestResponse.Content | ConvertFrom-Json
-    $latestVersionText = [string]$manifest.version
-    $latestVersionCode = 0
-    if ($null -ne $manifest.versionCode) {
-        [void][int]::TryParse([string]$manifest.versionCode, [ref]$latestVersionCode)
+    if ($snapshotProvided) {
+        if ([string]::IsNullOrWhiteSpace($ExpectedVersion) -or
+            [string]::IsNullOrWhiteSpace($ExpectedDownloadUrl) -or
+            [string]::IsNullOrWhiteSpace($ExpectedExeSha)) {
+            throw 'Vom Starter übergebener Update-Snapshot ist unvollständig.'
+        }
+
+        $latestVersionText = $ExpectedVersion
+        $latestVersionCode = $ExpectedVersionCode
+        $downloadUrl = $ExpectedDownloadUrl
+        $expectedSha = $ExpectedExeSha.Trim().ToLowerInvariant()
+        Write-UpdateLine '[PRÜFUNG] Verbindlicher Manifest-Snapshot vom Starter übernommen.'
     }
-    $downloadUrl = [string]$manifest.downloadUrl
-    $expectedSha = ([string]$manifest.sha256).Trim().ToLowerInvariant()
+    else {
+        Write-UpdateLine ('[PRÜFUNG] Manifest: ' + $ManifestUrl)
+        $manifest = $null
+        $manifestError = $null
+
+        for ($manifestAttempt = 1; $manifestAttempt -le 3; $manifestAttempt++) {
+            try {
+                $manifestUri = Add-CacheBustUri -Url $ManifestUrl -Token ($Stamp + '-manifest-' + $manifestAttempt)
+                $manifestResponse = Invoke-WebRequest -UseBasicParsing -Uri $manifestUri -TimeoutSec 30
+                if ($manifestResponse.StatusCode -ne 200) {
+                    throw ('HTTP=' + $manifestResponse.StatusCode)
+                }
+
+                $manifest = $manifestResponse.Content | ConvertFrom-Json
+                break
+            }
+            catch {
+                $manifestError = $_.Exception.Message
+                Write-UpdateLine (
+                    '[WARN] Manifest-Abruf Versuch ' + $manifestAttempt + '/3 fehlgeschlagen: ' +
+                    $manifestError)
+                if ($manifestAttempt -lt 3) {
+                    Start-Sleep -Milliseconds (750 * $manifestAttempt)
+                }
+            }
+        }
+
+        if ($null -eq $manifest) {
+            throw ('Update-Manifest konnte nach 3 Versuchen nicht geladen werden: ' + $manifestError)
+        }
+
+        $latestVersionText = [string]$manifest.version
+        $latestVersionCode = 0
+        if ($null -ne $manifest.versionCode) {
+            [void][int]::TryParse([string]$manifest.versionCode, [ref]$latestVersionCode)
+        }
+        $downloadUrl = [string]$manifest.downloadUrl
+        $expectedSha = ([string]$manifest.sha256).Trim().ToLowerInvariant()
+    }
 
     if ([string]::IsNullOrWhiteSpace($latestVersionText)) {
         throw 'Update-Manifest enthält keine Version.'
@@ -173,63 +235,120 @@ try {
     $TempExePath = Join-Path $UpdateRoot ($StarterFileName + '.download-' + $Stamp + '.exe')
     [IO.Directory]::CreateDirectory($UpdateRoot) | Out-Null
 
-    Write-UpdateLine ('[DOWNLOAD] ' + $downloadUrl)
-    Write-ProgressState -Phase 'download' -Done 0 -Total 0 -Percent 0
+    $downloadVerified = $false
+    $downloadError = $null
+    $downloadSha = ''
+    $downloadVersion = ''
+    $downloadVersionCode = 0
 
-    $httpClient = [Net.Http.HttpClient]::new()
-    $httpClient.Timeout = [TimeSpan]::FromSeconds(120)
-    $response = $null
-    $inputStream = $null
-    $outputStream = $null
+    for ($downloadAttempt = 1; $downloadAttempt -le 3; $downloadAttempt++) {
+        try {
+            Remove-Item -LiteralPath $TempExePath -Force -ErrorAction SilentlyContinue
+            $requestUrl = Add-CacheBustUri -Url $downloadUrl -Token ($Stamp + '-exe-' + $downloadAttempt)
 
-    try {
-        $response = $httpClient.GetAsync($downloadUrl, [Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
-        if (-not $response.IsSuccessStatusCode) {
-            throw ('Update-Download fehlgeschlagen. HTTP=' + [int]$response.StatusCode)
+            Write-UpdateLine (
+                '[DOWNLOAD] Versuch ' + $downloadAttempt + '/3: ' + $downloadUrl)
+            Write-ProgressState -Phase 'download' -Done 0 -Total 0 -Percent 0
+
+            $httpClient = [Net.Http.HttpClient]::new()
+            $httpClient.Timeout = [TimeSpan]::FromSeconds(120)
+            $response = $null
+            $inputStream = $null
+            $outputStream = $null
+
+            try {
+                $response = $httpClient.GetAsync(
+                    $requestUrl,
+                    [Net.Http.HttpCompletionOption]::ResponseHeadersRead
+                ).GetAwaiter().GetResult()
+
+                if (-not $response.IsSuccessStatusCode) {
+                    throw ('Update-Download fehlgeschlagen. HTTP=' + [int]$response.StatusCode)
+                }
+
+                $totalBytes = 0L
+                if ($null -ne $response.Content.Headers.ContentLength) {
+                    $totalBytes = [long]$response.Content.Headers.ContentLength
+                }
+
+                $inputStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+                $outputStream = [IO.File]::Open(
+                    $TempExePath,
+                    [IO.FileMode]::Create,
+                    [IO.FileAccess]::Write,
+                    [IO.FileShare]::None)
+                $buffer = New-Object byte[] (64 * 1024)
+                $doneBytes = 0L
+
+                while ($true) {
+                    $read = $inputStream.Read($buffer, 0, $buffer.Length)
+                    if ($read -le 0) { break }
+
+                    $outputStream.Write($buffer, 0, $read)
+                    $doneBytes += $read
+                    $percent =
+                        if ($totalBytes -gt 0) {
+                            [Math]::Min(100, [int](($doneBytes * 100L) / $totalBytes))
+                        }
+                        else {
+                            -1
+                        }
+                    Write-ProgressState -Phase 'download' -Done $doneBytes -Total $totalBytes -Percent $percent
+                }
+
+                $outputStream.Flush()
+                Write-ProgressState -Phase 'downloaded' -Done $doneBytes -Total $totalBytes -Percent 100
+            }
+            finally {
+                if ($null -ne $outputStream) { $outputStream.Dispose() }
+                if ($null -ne $inputStream) { $inputStream.Dispose() }
+                if ($null -ne $response) { $response.Dispose() }
+                if ($null -ne $httpClient) { $httpClient.Dispose() }
+            }
+
+            if (-not (Test-Path -LiteralPath $TempExePath -PathType Leaf)) {
+                throw 'Heruntergeladene EXE fehlt.'
+            }
+
+            $downloadSha = Get-FileSha256 $TempExePath
+            if ($downloadSha -ne $expectedSha) {
+                throw (
+                    'SHA-256 der heruntergeladenen EXE stimmt nicht. Erwartet=' +
+                    $expectedSha + ' Ist=' + $downloadSha)
+            }
+
+            $downloadVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($TempExePath).FileVersion
+            if ($downloadVersion -ne $latestVersionText) {
+                throw (
+                    'Heruntergeladene EXE meldet unerwartete Version. Erwartet=' +
+                    $latestVersionText + ' Ist=' + $downloadVersion)
+            }
+
+            $downloadVersionCode = Get-RunnerVersionCodeFromExe $TempExePath
+            if ($latestVersionCode -gt 0 -and $downloadVersionCode -ne $latestVersionCode) {
+                throw (
+                    'Heruntergeladene EXE meldet unerwarteten Build. Erwartet=' +
+                    $latestVersionCode + ' Ist=' + $downloadVersionCode)
+            }
+
+            $downloadVerified = $true
+            break
         }
-        $totalBytes = 0L
-        if ($null -ne $response.Content.Headers.ContentLength) {
-            $totalBytes = [long]$response.Content.Headers.ContentLength
+        catch {
+            $downloadError = $_.Exception.Message
+            Write-UpdateLine (
+                '[WARN] EXE-Download/Validierung Versuch ' + $downloadAttempt +
+                '/3 fehlgeschlagen: ' + $downloadError)
+            Remove-Item -LiteralPath $TempExePath -Force -ErrorAction SilentlyContinue
+
+            if ($downloadAttempt -lt 3) {
+                Start-Sleep -Milliseconds (1000 * $downloadAttempt)
+            }
         }
-        $inputStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
-        $outputStream = [IO.File]::Open($TempExePath, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
-        $buffer = New-Object byte[] (64 * 1024)
-        $doneBytes = 0L
-        while ($true) {
-            $read = $inputStream.Read($buffer, 0, $buffer.Length)
-            if ($read -le 0) { break }
-            $outputStream.Write($buffer, 0, $read)
-            $doneBytes += $read
-            $percent = if ($totalBytes -gt 0) { [Math]::Min(100, [int](($doneBytes * 100L) / $totalBytes)) } else { -1 }
-            Write-ProgressState -Phase 'download' -Done $doneBytes -Total $totalBytes -Percent $percent
-        }
-        $outputStream.Flush()
-        Write-ProgressState -Phase 'downloaded' -Done $doneBytes -Total $totalBytes -Percent 100
-    }
-    finally {
-        if ($null -ne $outputStream) { $outputStream.Dispose() }
-        if ($null -ne $inputStream) { $inputStream.Dispose() }
-        if ($null -ne $response) { $response.Dispose() }
-        $httpClient.Dispose()
     }
 
-    if (-not (Test-Path -LiteralPath $TempExePath -PathType Leaf)) {
-        throw 'Heruntergeladene EXE fehlt.'
-    }
-
-    $downloadSha = Get-FileSha256 $TempExePath
-    if ($downloadSha -ne $expectedSha) {
-        throw ('SHA-256 der heruntergeladenen EXE stimmt nicht. Erwartet=' + $expectedSha + ' Ist=' + $downloadSha)
-    }
-
-    $downloadVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($TempExePath).FileVersion
-    if ($downloadVersion -ne $latestVersionText) {
-        throw ('Heruntergeladene EXE meldet unerwartete Version. Erwartet=' + $latestVersionText + ' Ist=' + $downloadVersion)
-    }
-
-    $downloadVersionCode = Get-RunnerVersionCodeFromExe $TempExePath
-    if ($latestVersionCode -gt 0 -and $downloadVersionCode -ne $latestVersionCode) {
-        throw ('Heruntergeladene EXE meldet unerwarteten Build. Erwartet=' + $latestVersionCode + ' Ist=' + $downloadVersionCode)
+    if (-not $downloadVerified) {
+        throw ('Update-EXE konnte nach 3 Versuchen nicht sicher geladen werden: ' + $downloadError)
     }
 
     Write-UpdateLine ('[PASS] Download SHA256=' + $downloadSha)
@@ -487,7 +606,7 @@ catch {
 }
 catch {
     try {
-        Write-ProgressState -Phase 'error' -Done 0 -Total 0 -Percent -1
+        Write-ProgressState -Phase 'error' -Done 0 -Total 0 -Percent -1 -Detail $_.Exception.Message
         Write-UpdateLine ('[FEHLER] ' + $_.Exception.Message)
         Write-UpdateLine '[RC] 40'
     }
