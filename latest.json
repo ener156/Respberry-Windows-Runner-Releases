@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
-  "version": "7.4.51.0",
-  "versionCode": 208,
-  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.51.0.exe",
-  "sha256": "ca717559109f9c7edb5ba4c12db192ac4def041b3edfc8579c93b589f16008bd",
+  "version": "7.4.52.0",
+  "versionCode": 209,
+  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.52.0.exe",
+  "sha256": "0a32b63349db21f3ddf286af7f5bf960353f31d231b1cf08b255c579e27c053b",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
   "updaterSha256": "745a183f6e1e6763138566c6b170c2e9c9aed790eea3b18fcebf83296be40940",
-  "notes": "Merge PR #8: W-017 generic PowerShell script start arguments"
+  "notes": "Merge PR #9: W-010 instant safe GitHub list preview"
 }
