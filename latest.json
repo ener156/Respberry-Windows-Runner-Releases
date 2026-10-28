@@ -1,10 +1,10 @@
 {
   "appName": "Respberry Windows Runner",
-  "version": "7.4.52.0",
-  "versionCode": 217,
-  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.52.0.exe",
-  "sha256": "11c1c02659ef8c97724dda4a1a4280ecd22684c82e39c8d89ea6782b03b80e0f",
+  "version": "7.4.53.0",
+  "versionCode": 300,
+  "downloadUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/releases/Respberry-Windows-Runner-7.4.53.0.exe",
+  "sha256": "ab0699e89eab82831ff344b931edca59202840d122887579b4c4821768f45137",
   "updaterUrl": "https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/Respberry-Windows-SelfUpdate.ps1",
   "updaterSha256": "745a183f6e1e6763138566c6b170c2e9c9aed790eea3b18fcebf83296be40940",
-  "notes": "W-019: Windows pinned parameter profiles and Bash argv (#11)"
+  "notes": "W022: release Windows Runner 7.4.53.0 without fixed diagnostic readback limits"
 }
