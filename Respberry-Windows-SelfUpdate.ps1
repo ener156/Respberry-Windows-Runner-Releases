@@ -12,6 +12,11 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 
+# Windows PowerShell 5.1 lädt System.Net.Http nicht auf jedem Desktop automatisch.
+# Der Updater verwendet HttpClient für den gestreamten EXE-Download und muss die
+# Assembly deshalb vor dem ersten Typzugriff explizit verfügbar machen.
+Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
+
 $ManifestUrl = 'https://raw.githubusercontent.com/ener156/Respberry-Windows-Runner-Releases/main/latest.json'
 $Stamp = Get-Date -Format 'yyyyMMdd-HHmmssfff'
 $LocalRoot = Join-Path $env:LOCALAPPDATA 'RespberryStarterUIPrototype'
